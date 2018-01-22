@@ -7,7 +7,7 @@
 #define PRODUCER 0
 #define CONSUMER 1
 #define BUFFER_SIZE 10
-#define ROUNDS 3
+#define ROUNDS 3         // used to terminate execution
 
 // toggle comments on DEBUG to see differing behaviors
 // of this code based on sleep values.
@@ -27,10 +27,10 @@ void* produce(void*);
 void* consume(void*);
 
 // global variables: shared memory between producer
-// and consumer
+// and consumer. This version uses mutex locks.
 int stack[BUFFER_SIZE];
 int counter = 0, rear = 0, front = 0, i;
-bool flag[2];
+pthread_mutex_t mutex=PTHREAD_MUTEX_INITIALIZER;
 
 // methods: Code Section
 // Main establishes the threads. It is designed so that the producer
@@ -56,9 +56,9 @@ int main()
             return EXIT_FAILURE;
         } 
         else
-           #ifdef DEBUG
+#ifdef DEBUG
             printf("Consumer thread created with ID: %d\n", tCo_data.tid);
-           #endif        
+#endif        
 
         // create the producer thread with error handling
         if ((rc = pthread_create(&tPr, NULL, produce, &tPr_data)))
@@ -67,9 +67,9 @@ int main()
             return EXIT_FAILURE;
         }
         else
-           #ifdef DEBUG
+#ifdef DEBUG
             printf("Producer thread created with ID: %d\n", tPr_data.tid);
-           #endif
+#endif
 
         // block for thread completion before exiting
         pthread_join(tPr, NULL);
@@ -82,18 +82,9 @@ int main()
 // stack buffer that can later be read by a consumer.
 void *produce(void *arg)
 {
-
-    int turn;
-
     do { 
        
-        flag[PRODUCER] = true;
-        turn           = CONSUMER;
-   
-        while (flag[CONSUMER] && turn == CONSUMER) 
-        {
-          ; // go to sleep
-        }
+        pthread_mutex_lock(&mutex);
         if (counter < BUFFER_SIZE - 1)
         {
             stack[rear] = counter; // produces an int
@@ -101,14 +92,14 @@ void *produce(void *arg)
             rear = (rear + 1) % BUFFER_SIZE;
             counter++;
         }
-        flag[PRODUCER] = false;
-        #ifdef DEBUG
+        pthread_mutex_unlock(&mutex);
+#ifndef DEBUG
+    } while (counter < BUFFER_SIZE - 1);
+#else
          sleep(1);
-        #endif
-    } while(counter < BUFFER_SIZE - 1);
-    #ifdef DEBUG
+    } while(true); // debug version is designed to run forever.
      printf("Successfully exiting produce function...\n");
-    #endif
+#endif
     return EXIT_SUCCESS; 
 }
 
@@ -116,16 +107,10 @@ void *produce(void *arg)
 // AFTER it has been produced by the producer.
 void *consume(void *arg)
 {
-    int turn;
     int consumed = 0;
 
     do {
-        flag[CONSUMER] = true;
-        turn           = PRODUCER;
-        while(flag[PRODUCER] && turn == PRODUCER)
-        {
-         ;// go to sleep
-        }
+        pthread_mutex_lock(&mutex);
         if (counter > 0)
         {
             consumed = stack[front];
@@ -133,13 +118,13 @@ void *consume(void *arg)
             front = (front + 1) % BUFFER_SIZE;
             counter--;        
         }
-        flag[CONSUMER] = false;
-        #ifdef DEBUG
+        pthread_mutex_unlock(&mutex);
+#ifndef DEBUG
+    } while (counter > 0);   
+#else
          sleep(1);
-        #endif
-    } while(counter > 0); 
-    #ifdef DEBUG
+    } while(true); // debug version is designed to run forever 
      printf("Successfully exiting consume function...\n");
-    #endif
+#endif
      return EXIT_SUCCESS;
 }
